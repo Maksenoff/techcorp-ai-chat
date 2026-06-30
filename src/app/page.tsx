@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 type Role = 'user' | 'assistant' | 'system';
 
@@ -81,6 +81,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
+  // Ref always in sync with messages state — avoids stale closures in async sendMessage
+  const messagesRef = useRef<Message[]>([]);
 
   const effectiveServer = customServer.trim() || serverUrl;
 
@@ -103,12 +105,18 @@ export default function ChatPage() {
     activeConvIdRef.current = activeConvId;
   }, [activeConvId]);
 
+  // Keep ref in sync so sendMessage always reads the latest messages
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   function startNewChat() {
     setMessages([]);
+    messagesRef.current = [];
     setActiveConvId(null);
     activeConvIdRef.current = null;
     setIsEphemeral(false);
@@ -118,6 +126,7 @@ export default function ChatPage() {
 
   function startEphemeralChat() {
     setMessages([]);
+    messagesRef.current = [];
     setActiveConvId(null);
     activeConvIdRef.current = null;
     setIsEphemeral(true);
@@ -128,6 +137,7 @@ export default function ChatPage() {
   function loadConversation(conv: Conversation) {
     if (isLoading) return;
     setMessages(conv.messages);
+    messagesRef.current = conv.messages;
     setActiveConvId(conv.id);
     activeConvIdRef.current = conv.id;
     setIsEphemeral(false);
@@ -145,14 +155,18 @@ export default function ChatPage() {
     }
   }
 
-  const sendMessage = useCallback(async () => {
+  async function sendMessage() {
     const text = input.trim();
     if (!text || isLoading) return;
 
+    // Read from ref — always contains the current messages regardless of render cycle
+    const currentMessages = messagesRef.current;
+
     setError(null);
     const userMsg: Message = { id: uid(), role: 'user', content: text };
-    const history = [...messages, userMsg];
+    const history = [...currentMessages, userMsg];
     setMessages(history);
+    messagesRef.current = history;
     setInput('');
     setIsLoading(true);
 
@@ -210,12 +224,13 @@ export default function ChatPage() {
         );
       }
 
-      // Save completed conversation
+      // Save completed conversation with full history
       if (!isEphemeral && convId) {
         const finalMessages: Message[] = [
           ...history,
           { id: assistantId, role: 'assistant', content: fullContent },
         ];
+        messagesRef.current = finalMessages;
         setConversations((prev) =>
           prev.map((c) =>
             c.id === convId
@@ -228,11 +243,12 @@ export default function ChatPage() {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(msg);
       setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+      messagesRef.current = currentMessages;
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, isLoading, messages, isEphemeral, model, effectiveServer]);
+  }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
