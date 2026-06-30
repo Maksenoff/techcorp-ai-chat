@@ -82,7 +82,9 @@ async function requestNvidia(
   messages: ChatMessage[]
 ) {
   const apiKey = process.env.NVIDIA_API_KEY;
+  const apiUrl = process.env.NVIDIA_API_URL?.replace(/\/$/, '');
   if (!apiKey) throw new Error('CONFIG_NVIDIA');
+  if (!apiUrl) throw new Error('CONFIG_NVIDIA_URL');
 
   const providerMessages = model.id === 'google-gemma'
     ? messages.map((message, index) => index === 0
@@ -103,7 +105,7 @@ async function requestNvidia(
     payload.chat_template_kwargs = { thinking: false };
   }
 
-  return fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+  return fetch(`${apiUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -210,6 +212,9 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof Error && error.message === 'CONFIG_NVIDIA') {
       return jsonError('La cle NVIDIA_API_KEY manque dans .env.local.', 500);
+    }
+    if (error instanceof Error && error.message === 'CONFIG_NVIDIA_URL') {
+      return jsonError("L'URL NVIDIA_API_URL manque dans .env.local.", 500);
     }
     return jsonError("Impossible de joindre le fournisseur d'IA.", 502);
   }
