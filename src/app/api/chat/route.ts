@@ -163,7 +163,15 @@ function transformStream(
           for (const line of lines) {
             if (!line.trim()) continue;
             const parsed = parseLine(line);
-            if (parsed.content) controller.enqueue(encoder.encode(parsed.content));
+            if (parsed.content) {
+              try {
+                controller.enqueue(encoder.encode(parsed.content));
+              } catch {
+                closed = true;
+                await reader.cancel();
+                return;
+              }
+            }
             if (parsed.done) {
               close();
               return;
@@ -173,9 +181,15 @@ function transformStream(
           if (done) break;
         }
       } catch (error) {
-        console.error('AI stream error', error);
-        controller.error(new Error("Le flux du modele a ete interrompu."));
-        closed = true;
+        if (!closed) {
+          console.error('AI stream error', error);
+          closed = true;
+          try {
+            controller.error(new Error("Le flux du modele a ete interrompu."));
+          } catch {
+            // Le client a deja ferme la connexion.
+          }
+        }
         return;
       } finally {
         reader.releaseLock();

@@ -43,7 +43,7 @@ export const CHAT_MODELS = [
 
 export type ChatModelId = (typeof CHAT_MODELS)[number]['id'];
 
-export const DEFAULT_CHAT_MODEL_ID: ChatModelId = 'deepseek-v4-pro';
+export const DEFAULT_CHAT_MODEL_ID: ChatModelId = 'mistral-small-4';
 
 export function getChatModel(id: unknown) {
   return CHAT_MODELS.find((model) => model.id === id) ?? null;
