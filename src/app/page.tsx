@@ -1,8 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { MarkdownMessage } from '@/components/MarkdownMessage';
+import {
+  CHAT_MODELS,
+  DEFAULT_CHAT_MODEL_ID,
+  type ChatModelId,
+} from '@/lib/chat-models';
 
-type Role = 'user' | 'assistant' | 'system';
+type Role = 'user' | 'assistant';
 
 interface Message {
   id: string;
@@ -17,25 +23,6 @@ interface Conversation {
   createdAt: string;
   updatedAt: string;
 }
-
-const MODELS = [
-  { value: 'phi3.5', label: 'Phi-3.5 (base)' },
-  { value: 'phi3.5-financial', label: 'Phi-3.5-Financial' },
-  { value: 'qwen2.5:3b', label: 'Qwen 2.5 3B' },
-  { value: 'mistral', label: 'Mistral' },
-  { value: 'tinyllama', label: 'TinyLlama' },
-];
-
-const SERVERS = [
-  { value: 'http://localhost:11434', label: 'Ollama (11434)' },
-  { value: 'http://localhost:8000', label: 'Triton (8000)' },
-];
-
-const SYSTEM_PROMPT =
-  'You are a professional financial AI assistant for TechCorp Industries. ' +
-  'You provide accurate, concise, and insightful analysis on financial topics, ' +
-  'market trends, investment strategies, and business intelligence. ' +
-  'Always be professional, data-driven, and clear in your responses.';
 
 const SUGGESTIONS = [
   'Analyse le marché des actions tech en 2024',
@@ -71,10 +58,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isEphemeral, setIsEphemeral] = useState(false);
-  const [model, setModel] = useState(MODELS[1].value);
-  const [serverUrl, setServerUrl] = useState(SERVERS[0].value);
-  const [customServer, setCustomServer] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
+  const [modelId, setModelId] = useState<ChatModelId>(DEFAULT_CHAT_MODEL_ID);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,12 +68,12 @@ export default function ChatPage() {
   // Ref always in sync with messages state — avoids stale closures in async sendMessage
   const messagesRef = useRef<Message[]>([]);
 
-  const effectiveServer = customServer.trim() || serverUrl;
-
   // Load conversations from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
+      // Hydrate the browser-only conversation history after the first render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setConversations(JSON.parse(raw));
     } catch {}
   }, []);
@@ -197,12 +181,8 @@ export default function ChatPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model,
-          serverUrl: effectiveServer,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...history.map((m) => ({ role: m.role, content: m.content })),
-          ],
+          modelId,
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -363,64 +343,30 @@ export default function ChatPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <label className="relative flex items-center">
+            <span className="sr-only">Modèle IA</span>
             <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="text-xs bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={modelId}
+              onChange={(event) => setModelId(event.target.value as ChatModelId)}
+              disabled={isLoading}
+              className="max-w-52 appearance-none rounded-lg border border-gray-700 bg-gray-800 py-2 pl-3 pr-8 text-xs font-medium text-gray-200 outline-none transition-colors hover:border-gray-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
+              {CHAT_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
               ))}
             </select>
-
-            <button
-              onClick={() => setShowSettings((s) => !s)}
-              className={`p-1.5 rounded-md transition-colors ${
-                showSettings ? 'text-blue-400 bg-blue-900/30' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-              }`}
-              title="Paramètres serveur"
+            <svg
+              className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-gray-500"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          </div>
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
+          </label>
         </header>
-
-        {/* Settings panel */}
-        {showSettings && (
-          <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 shrink-0">
-            <p className="text-xs font-medium text-gray-400 mb-2">Serveur d&apos;inférence</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              {SERVERS.map((s) => (
-                <button
-                  key={s.value}
-                  onClick={() => { setServerUrl(s.value); setCustomServer(''); }}
-                  className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                    effectiveServer === s.value && !customServer
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-500'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-              <input
-                type="text"
-                placeholder="URL personnalisée…"
-                value={customServer}
-                onChange={(e) => setCustomServer(e.target.value)}
-                className="text-xs bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-48"
-              />
-            </div>
-            <p className="text-xs text-gray-600 mt-2">
-              Actif : <span className="text-gray-400 font-mono">{effectiveServer}</span>
-            </p>
-          </div>
-        )}
 
         {/* Messages */}
         <main className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-6">
@@ -444,7 +390,7 @@ export default function ChatPage() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-gray-200">
-                  {isEphemeral ? 'Chat éphémère' : 'Phi-3.5-Financial'}
+                  {isEphemeral ? 'Chat éphémère' : 'Assistant financier TechCorp'}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1 max-w-sm">
                   {isEphemeral
@@ -477,12 +423,12 @@ export default function ChatPage() {
               }`}>
                 {msg.role === 'user' ? 'U' : 'AI'}
               </div>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              <div className={`min-w-0 rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
                   ? isEphemeral
-                    ? 'bg-purple-700 text-white rounded-tr-sm'
-                    : 'bg-blue-600 text-white rounded-tr-sm'
-                  : 'bg-gray-800 text-gray-100 rounded-tl-sm'
+                    ? 'max-w-[75%] bg-purple-700 text-white rounded-tr-sm'
+                    : 'max-w-[75%] bg-blue-600 text-white rounded-tr-sm'
+                  : 'max-w-[90%] md:max-w-4xl bg-gray-800 text-gray-100 rounded-tl-sm'
               }`}>
                 {msg.content === '' && isLoading ? (
                   <span className="flex items-center gap-1 py-0.5">
@@ -491,12 +437,16 @@ export default function ChatPage() {
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
                   </span>
                 ) : (
-                  <span className="whitespace-pre-wrap">
-                    {msg.content}
+                  <div>
+                    {msg.role === 'assistant' ? (
+                      <MarkdownMessage content={msg.content} />
+                    ) : (
+                      <span className="whitespace-pre-wrap">{msg.content}</span>
+                    )}
                     {msg.role === 'assistant' && isLoading && msg.content && (
                       <span className="cursor-blink" />
                     )}
-                  </span>
+                  </div>
                 )}
               </div>
             </div>
@@ -555,7 +505,7 @@ export default function ChatPage() {
             </button>
           </div>
           <p className="text-center text-xs text-gray-600 mt-2">
-            {model} &middot; <span className="font-mono">{effectiveServer}</span>
+            TechCorp AI &middot; {CHAT_MODELS.find((model) => model.id === modelId)?.shortLabel}
           </p>
         </footer>
       </div>
